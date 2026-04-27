@@ -1,0 +1,157 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SystemRole {
+  USER
+  SUPER_ADMIN
+}
+
+enum OrganizationRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum SubscriptionPlan {
+  FREE
+  PRO
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  PAST_DUE
+  INCOMPLETE
+}
+
+model User {
+  id             String       @id @default(cuid())
+  name           String?
+  email          String       @unique
+  emailVerified  DateTime?
+  passwordHash   String?
+  image          String?
+  systemRole     SystemRole   @default(USER)
+  memberships    Membership[]
+  auditLogs      AuditLog[]
+  notifications  Notification[]
+  accounts       Account[]
+  sessions       Session[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([email])
+}
+
+model Organization {
+  id               String         @id @default(cuid())
+  name             String
+  slug             String         @unique
+  memberships      Membership[]
+  subscriptions    Subscription[]
+  auditLogs        AuditLog[]
+  notifications    Notification[]
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([slug])
+}
+
+model Membership {
+  id              String            @id @default(cuid())
+  userId          String
+  organizationId  String
+  role            OrganizationRole  @default(MEMBER)
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt       DateTime          @default(now())
+
+  @@unique([userId, organizationId])
+  @@index([organizationId, role])
+}
+
+model Subscription {
+  id                    String              @id @default(cuid())
+  organizationId        String              @unique
+  organization          Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan                  SubscriptionPlan    @default(FREE)
+  status                SubscriptionStatus  @default(INCOMPLETE)
+  stripeCustomerId      String?             @unique
+  stripeSubscriptionId  String?             @unique
+  currentPeriodEnd      DateTime?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  @@index([organizationId, plan])
+}
+
+model Notification {
+  id              String        @id @default(cuid())
+  organizationId  String
+  userId          String
+  title           String
+  body            String
+  readAt          DateTime?
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt       DateTime      @default(now())
+
+  @@index([organizationId, userId])
+}
+
+model AuditLog {
+  id              String        @id @default(cuid())
+  organizationId  String
+  actorId         String
+  action          String
+  entityType      String
+  entityId        String
+  metadata        Json?
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor           User          @relation(fields: [actorId], references: [id], onDelete: Cascade)
+  createdAt       DateTime      @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([actorId, action])
+}
+
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  refresh_token      String?
+  access_token       String?
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String?
+  session_state      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id            String   @id @default(cuid())
+  sessionToken  String   @unique
+  userId        String
+  expires       DateTime
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
